@@ -1,0 +1,29 @@
+# ZACA: build-context ignore for Dockerfile.zaca. BuildKit prefers a
+# <dockerfile>.dockerignore over the default .dockerignore. This mirrors the
+# upstream .dockerignore but KEEPS **/.gitignore in the context: the frontend
+# `prebuild` step runs `eslint --ignore-path .gitignore src`, which fails with
+# ENOENT if frontend/.gitignore is stripped. See ZACA-CHANGES.md.
+**/.classpath
+**/.dockerignore
+**/.env
+**/.git
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+**/azds.yaml
+**/bin
+**/charts
+**/docker-compose*
+**/Dockerfile*
+**/node_modules
+**/npm-debug.log
+**/obj
+**/secrets.dev.yaml
+**/values.dev.yaml
+LICENSE
+README.md

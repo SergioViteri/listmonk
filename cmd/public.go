@@ -104,6 +104,14 @@ var (
 
 // Render executes and renders a template for echo.
 func (t *tplRenderer) Render(w io.Writer, name string, data any, c echo.Context) error {
+	// ZACA: use the per-request i18n instance if a subscriber-facing handler
+	// resolved one (from attribs.lang / list tag); otherwise the instance
+	// default (app.lang). Only templates that read the `.L` field pick this up.
+	l := c.Get("app").(*App).i18n
+	if v, ok := c.Get(zacaI18nKey).(*i18n.I18n); ok && v != nil {
+		l = v
+	}
+
 	return t.templates.ExecuteTemplate(w, name, tplData{
 		SiteName:            t.SiteName,
 		RootURL:             t.RootURL,
@@ -114,7 +122,7 @@ func (t *tplRenderer) Render(w io.Writer, name string, data any, c echo.Context)
 		EnablePublicArchive: t.EnablePublicArchive,
 		IndividualTracking:  t.IndividualTracking,
 		Data:                data,
-		L:                   c.Get("app").(*App).i18n,
+		L:                   l,
 	})
 }
 
@@ -206,6 +214,9 @@ func (a *App) SubscriptionPage(c echo.Context) error {
 		return c.Render(http.StatusInternalServerError, tplMessage,
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
 	}
+
+	// ZACA: render this subscriber-facing page in the subscriber's language.
+	c.Set(zacaI18nKey, a.zi.For(subLang(s)))
 
 	// Prepare the public template.
 	out := unsubTpl{
@@ -301,6 +312,9 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 	}
 	sub.Name = req.Name
 
+	// ZACA: render the manage-preferences confirmation in the subscriber's language.
+	c.Set(zacaI18nKey, a.zi.For(subLang(sub)))
+
 	// Update the subscriber properties in the DB.
 	if _, err := a.core.UpdateSubscriber(sub.ID, sub); err != nil {
 		return c.Render(http.StatusInternalServerError, tplMessage,
@@ -377,6 +391,10 @@ func (a *App) OptinPage(c echo.Context) error {
 		return c.Render(http.StatusOK, tplMessage,
 			makeMsgTpl(a.i18n.T("public.noSubTitle"), "", a.i18n.Ts("public.noSubInfo")))
 	}
+
+	// ZACA: no subscriber record here; derive the language from a `lang:xx` list
+	// tag if present, falling back to the instance default.
+	c.Set(zacaI18nKey, a.zi.For(listsLang(lists)))
 
 	if confirm || !a.cfg.ShowOptinPage {
 		return a.confirmOptinSubscription(c, subUUID, req.ListUUIDs, lists)

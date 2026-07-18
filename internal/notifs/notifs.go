@@ -67,14 +67,25 @@ func NotifySystem(subject, tplName string, data any, hdr textproto.MIMEHeader) e
 	return Notify(no.opt.SystemEmails, subject, tplName, data, hdr)
 }
 
-// Notify sends out an e-mail notification.
+// Notify sends out an e-mail notification using the default template set.
 func Notify(toEmails []string, subject, tplName string, data any, hdr textproto.MIMEHeader) error {
+	return NotifyWithTpls(Tpls, toEmails, subject, tplName, data, hdr)
+}
+
+// NotifyWithTpls is like Notify but renders with a caller-provided template set.
+// ZACA: used to render subscriber-facing notifications (e.g. the double opt-in
+// e-mail) with a per-language template set. A nil tpls falls back to the default.
+func NotifyWithTpls(tpls *template.Template, toEmails []string, subject, tplName string, data any, hdr textproto.MIMEHeader) error {
 	if len(toEmails) == 0 {
 		return nil
 	}
 
+	if tpls == nil {
+		tpls = Tpls
+	}
+
 	var buf bytes.Buffer
-	if err := Tpls.ExecuteTemplate(&buf, tplName, data); err != nil {
+	if err := tpls.ExecuteTemplate(&buf, tplName, data); err != nil {
 		no.lo.Printf("error compiling notification template '%s': %v", tplName, err)
 		return err
 	}

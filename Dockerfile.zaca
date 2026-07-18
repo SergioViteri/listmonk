@@ -1,0 +1,66 @@
+# ZACA: multi-stage image that COMPILES listmonk from source.
+#
+# The official `Dockerfile` only copies an already-built, stuffbin-packed binary
+# (produced by goreleaser on a CI runner). For our fork we want a single,
+# reproducible `docker build` on any box with Docker (no Go/Node on the host):
+#
+#   docker build -f Dockerfile.zaca \
+#     --build-arg LISTMONK_VERSION=v6.2.0-zaca \
+#     -t listmonk-zaca:v6.2.0-zaca .
+#
+# Then ship it to prod without a registry:
+#   docker save listmonk-zaca:v6.2.0-zaca | ssh ubuntu@news 'docker load'
+# and point /opt/listmonk/docker-compose.yml `image:` to the tag.
+#
+# The run stage mirrors the official Dockerfile so the existing entrypoint,
+# ports and config handling are unchanged. See ZACA-CHANGES.md.
+
+# ---- Build stage: Node (make/git/curl included) + Go toolchain -> `make dist` ----
+# node:20-bookworm (full, buildpack-deps based) already ships make, git and curl.
+FROM node:20-bookworm AS build
+
+# Bring in the Go toolchain from the official Go image (self-contained dir).
+COPY --from=golang:1.26.1-bookworm /usr/local/go /usr/local/go
+
+ENV GOPATH=/root/go
+ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
+ENV CGO_ENABLED=0
+
+# yarn 1.x classic (pinned in frontend/package.json) via corepack.
+RUN corepack enable && corepack prepare yarn@1.22.22 --activate
+
+WORKDIR /app
+COPY . .
+
+# .git is excluded by .dockerignore, so the Makefile can't derive the version
+# from `git describe`. Pass it explicitly; the Makefile prefers $LISTMONK_VERSION.
+ARG LISTMONK_VERSION=""
+ENV LISTMONK_VERSION=${LISTMONK_VERSION}
+
+# The frontend `prebuild` runs `eslint --ignore-path .gitignore src`, which aborts
+# with ENOENT if frontend/.gitignore is absent. Dockerfile.zaca.dockerignore keeps
+# it in the context on BuildKit; this fallback guarantees it exists even on build
+# hosts where the per-Dockerfile ignore file isn't honored.
+RUN test -f frontend/.gitignore || : > frontend/.gitignore
+
+# Builds the frontend (yarn install + vite), compiles the backend and packs all
+# static assets (i18n, public/email templates, admin SPA) into ./listmonk.
+RUN make dist
+
+# ---- Run stage: identical to the official Dockerfile ----
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates tzdata shadow su-exec
+
+WORKDIR /listmonk
+
+COPY --from=build /app/listmonk .
+COPY --from=build /app/config.toml.sample config.toml
+COPY --from=build /app/docker-entrypoint.sh /usr/local/bin/
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+EXPOSE 9000
+
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["./listmonk"]

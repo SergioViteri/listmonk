@@ -48,6 +48,7 @@ type App struct {
 	bounce     *bounce.Manager
 	captcha    *captcha.Captcha
 	i18n       *i18n.I18n
+	zi         *i18nStore // ZACA: per-language i18n store for subscriber-facing pieces.
 	pg         *paginator.Paginator
 	events     *events.Events
 	log        *log.Logger
@@ -204,7 +205,11 @@ func main() {
 		// Initialize the media store.
 		media = initMediaStore(ko)
 
-		fbOptinNotify = makeOptinNotifyHook(ko.Bool("privacy.unsubscribe_header"), urlCfg, queries, i18n)
+		// ZACA: per-language i18n store, shared by the public handlers and the
+		// opt-in notify hook (built here, before *App exists).
+		zi = newI18nStore(fs, urlCfg, i18n)
+
+		fbOptinNotify = makeOptinNotifyHook(ko.Bool("privacy.unsubscribe_header"), urlCfg, queries, i18n, zi)
 
 		// Crud core.
 		core = initCore(fbOptinNotify, queries, db, i18n, ko)
@@ -279,6 +284,7 @@ func main() {
 		bounce:     bounce,
 		captcha:    initCaptcha(),
 		i18n:       i18n,
+		zi:         zi,
 		log:        lo,
 		events:     evStream,
 		bufLog:     bufLog,

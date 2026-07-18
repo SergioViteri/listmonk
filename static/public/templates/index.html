@@ -8,7 +8,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
 
 	{{ if .EnablePublicArchive }}
-		<link rel="alternate" type="application/rss+xml" title="{{ L.T "public.archiveTitle" }} - {{ .SiteName }}"
+		<link rel="alternate" type="application/rss+xml" title="{{ $.L.T "public.archiveTitle" }} - {{ .SiteName }}"
 			href="{{ .RootURL }}/archive.xml" />
 	{{ end }}
 
@@ -41,7 +41,7 @@
 	</div>
 	
 	<footer class="container">
-		{{ L.T "public.poweredBy" }} <a target="_blank" rel="noreferrer" href="https://listmonk.app">listmonk</a>
+		{{ $.L.T "public.poweredBy" }} <a target="_blank" rel="noreferrer" href="https://listmonk.app">listmonk</a>
 	</footer>
 </body>
 </html>
