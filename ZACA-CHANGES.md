@@ -67,6 +67,15 @@ siguen en `app.lang`).
   renderizar con un set de plantillas por idioma. `Notify(...)` ahora delega en él
   con el set global (sin cambio de comportamiento).
 
+**Mensajes de las páginas de confirmación/error (`message.html`).** Esas páginas
+(`makeMsgTpl`) reciben los textos **ya traducidos** desde el handler con `a.i18n`
+(global), así que no los cubría el cambio de `.L` en plantillas. Helper
+`a.langOf(c)` (en `cmd/i18n_zaca.go`) devuelve la instancia por-petición del
+contexto (o `app.lang`); los handlers de suscriptor la usan para construir los
+mensajes: opt-in confirmado (`confirmOptinSubscription`), baja/gestión
+(`SubscriptionPrefs`), opt-in (`OptinPage` título), export/wipe. `Render` también
+pasa a usar `langOf`.
+
 ### Plantillas públicas (edición mecánica)
 Las plantillas de suscriptor traducían con el funcmap **global** `{{ L.T }}` (ligado
 en parse-time → no varía por petición). Se cambian a `{{ $.L.T }}` (campo `.L` del

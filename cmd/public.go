@@ -107,10 +107,7 @@ func (t *tplRenderer) Render(w io.Writer, name string, data any, c echo.Context)
 	// ZACA: use the per-request i18n instance if a subscriber-facing handler
 	// resolved one (from attribs.lang / list tag); otherwise the instance
 	// default (app.lang). Only templates that read the `.L` field pick this up.
-	l := c.Get("app").(*App).i18n
-	if v, ok := c.Get(zacaI18nKey).(*i18n.I18n); ok && v != nil {
-		l = v
-	}
+	l := c.Get("app").(*App).langOf(c)
 
 	return t.templates.ExecuteTemplate(w, name, tplData{
 		SiteName:            t.SiteName,
@@ -290,43 +287,44 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 	// ZACA: resolve the subscriber's language (attribs.lang -> list lang:xx tag ->
 	// app.lang) so the confirmation/manage pages render in it.
 	c.Set(zacaI18nKey, a.zi.For(a.subUUIDLang(subUUID)))
+	L := a.langOf(c)
 
 	if !req.Manage || blocklist {
 		if err := a.core.UnsubscribeByCampaign(subUUID, campUUID, blocklist); err != nil {
 			return c.Render(http.StatusInternalServerError, tplMessage,
-				makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
+				makeMsgTpl(L.T("public.errorTitle"), "", L.T("public.errorProcessingRequest")))
 		}
 
 		return c.Render(http.StatusOK, tplMessage,
-			makeMsgTpl(a.i18n.T("public.unsubbedTitle"), "", a.i18n.T("public.unsubbedInfo")))
+			makeMsgTpl(L.T("public.unsubbedTitle"), "", L.T("public.unsubbedInfo")))
 	}
 
 	// Is preference management enabled?
 	if !a.cfg.Privacy.AllowPreferences {
 		return c.Render(http.StatusBadRequest, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.invalidFeature")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.T("public.invalidFeature")))
 	}
 
 	// Manage preferences.
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" || len(req.Name) > 256 {
 		return c.Render(http.StatusBadRequest, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("subscribers.invalidName")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.T("subscribers.invalidName")))
 	}
 
 	// Get the subscriber from the DB.
 	sub, err := a.core.GetSubscriber(0, subUUID, "")
 	if err != nil {
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("globals.messages.pFound",
-				"name", a.i18n.T("globals.terms.subscriber"))))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.Ts("globals.messages.pFound",
+				"name", L.T("globals.terms.subscriber"))))
 	}
 	sub.Name = req.Name
 
 	// Update the subscriber properties in the DB.
 	if _, err := a.core.UpdateSubscriber(sub.ID, sub); err != nil {
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.T("public.errorProcessingRequest")))
 	}
 
 	// Get the subscriber's lists and whatever is not sent in the request (unchecked),
@@ -339,7 +337,7 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 	// Get subscription from teh DB.
 	subs, err := a.core.GetSubscriptions(0, subUUID, false)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.errorFetchingLists"))
+		return echo.NewHTTPError(http.StatusBadRequest, L.T("public.errorFetchingLists"))
 	}
 
 	// Filter the lists in the request against the subscriptions in the DB.
@@ -356,12 +354,12 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 	// Unsubscribe from lists.
 	if err := a.core.UnsubscribeLists([]int{sub.ID}, nil, unsubUUIDs); err != nil {
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.T("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.T("public.errorProcessingRequest")))
 
 	}
 
 	return c.Render(http.StatusOK, tplMessage,
-		makeMsgTpl(a.i18n.T("globals.messages.done"), "", a.i18n.T("public.prefsSaved")))
+		makeMsgTpl(L.T("globals.messages.done"), "", L.T("public.prefsSaved")))
 }
 
 // OptinPage renders the double opt-in confirmation page that subscribers
@@ -411,12 +409,16 @@ func (a *App) OptinPage(c echo.Context) error {
 	var out optinTpl
 	out.Lists = lists
 	out.SubUUID = subUUID
-	out.Title = a.i18n.T("public.confirmOptinSubTitle")
+	out.Title = a.langOf(c).T("public.confirmOptinSubTitle")
 
 	return c.Render(http.StatusOK, "optin", out)
 }
 
 func (a *App) confirmOptinSubscription(c echo.Context, subUUID string, listUUIDs []string, lists []models.List) error {
+	// ZACA: translate the confirmation/message page in the subscriber's language
+	// (resolved by OptinPage before calling this).
+	L := a.langOf(c)
+
 	if len(listUUIDs) == 0 {
 		listUUIDs = make([]string, 0, len(lists))
 		for _, l := range lists {
@@ -436,11 +438,11 @@ func (a *App) confirmOptinSubscription(c echo.Context, subUUID string, listUUIDs
 	if err := a.core.ConfirmOptionSubscription(subUUID, listUUIDs, meta); err != nil {
 		a.log.Printf("error confirming opt-in subscription: %v", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.Ts("public.errorProcessingRequest")))
 	}
 
 	return c.Render(http.StatusOK, tplMessage,
-		makeMsgTpl(a.i18n.T("public.subConfirmedTitle"), "", a.i18n.Ts("public.subConfirmed")))
+		makeMsgTpl(L.T("public.subConfirmedTitle"), "", L.Ts("public.subConfirmed")))
 }
 
 // SubscriptionFormPage handles subscription requests coming from public
@@ -650,11 +652,16 @@ func (a *App) SelfExportSubscriberData(c echo.Context) error {
 	// list subscriptions, campaign views, and link clicks. Names of
 	// private lists are replaced with "Private list".
 	subUUID := c.Param("subUUID")
+
+	// ZACA: render this subscriber-facing page in the subscriber's language.
+	c.Set(zacaI18nKey, a.zi.For(a.subUUIDLang(subUUID)))
+	L := a.langOf(c)
+
 	data, b, err := a.exportSubscriberData(0, subUUID, a.cfg.Privacy.Exportable)
 	if err != nil {
 		a.log.Printf("error exporting subscriber data: %s", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.Ts("public.errorProcessingRequest")))
 	}
 
 	// Prepare the attachment e-mail.
@@ -662,7 +669,7 @@ func (a *App) SelfExportSubscriberData(c echo.Context) error {
 	if err := notifs.Tpls.ExecuteTemplate(&msg, notifs.TplSubscriberData, data); err != nil {
 		a.log.Printf("error compiling notification template '%s': %v", notifs.TplSubscriberData, err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.Ts("public.errorProcessingRequest")))
 	}
 
 	// TODO: GetTplSubject should be moved to a utils package.
@@ -685,11 +692,11 @@ func (a *App) SelfExportSubscriberData(c echo.Context) error {
 	}); err != nil {
 		a.log.Printf("error e-mailing subscriber profile: %s", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.Ts("public.errorProcessingRequest")))
 	}
 
 	return c.Render(http.StatusOK, tplMessage,
-		makeMsgTpl(a.i18n.T("public.dataSentTitle"), "", a.i18n.T("public.dataSent")))
+		makeMsgTpl(L.T("public.dataSentTitle"), "", L.T("public.dataSent")))
 }
 
 // WipeSubscriberData allows a subscriber to delete their data. The
@@ -703,14 +710,19 @@ func (a *App) WipeSubscriberData(c echo.Context) error {
 	}
 
 	subUUID := c.Param("subUUID")
+
+	// ZACA: resolve the language before deleting the subscriber (subUUIDLang reads it).
+	L := a.zi.For(a.subUUIDLang(subUUID))
+	c.Set(zacaI18nKey, L)
+
 	if err := a.core.DeleteSubscribers(nil, []string{subUUID}); err != nil {
 		a.log.Printf("error wiping subscriber data: %s", err)
 		return c.Render(http.StatusInternalServerError, tplMessage,
-			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
+			makeMsgTpl(L.T("public.errorTitle"), "", L.Ts("public.errorProcessingRequest")))
 	}
 
 	return c.Render(http.StatusOK, tplMessage,
-		makeMsgTpl(a.i18n.T("public.dataRemovedTitle"), "", a.i18n.T("public.dataRemoved")))
+		makeMsgTpl(L.T("public.dataRemovedTitle"), "", L.T("public.dataRemoved")))
 }
 
 // AltchaChallenge generates a challenge for Altcha captcha.

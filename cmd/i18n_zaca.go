@@ -26,6 +26,7 @@ import (
 	"github.com/knadh/listmonk/internal/notifs"
 	"github.com/knadh/listmonk/models"
 	"github.com/knadh/stuffbin"
+	"github.com/labstack/echo/v4"
 )
 
 // zacaI18nKey is the echo.Context key under which subscriber-facing handlers
@@ -118,6 +119,17 @@ func (s *i18nStore) NotifTpls(lang string) *template.Template {
 	s.tpls[lang] = t
 	s.mu.Unlock()
 	return t
+}
+
+// langOf returns the per-request i18n instance stashed by a subscriber-facing
+// handler (from attribs.lang / list tag), or the instance default (app.lang).
+// Used to translate the message/confirmation pages (message.html renders
+// pre-translated strings, so it can't pick up the per-request `.L` itself).
+func (a *App) langOf(c echo.Context) *i18n.I18n {
+	if v, ok := c.Get(zacaI18nKey).(*i18n.I18n); ok && v != nil {
+		return v
+	}
+	return a.i18n
 }
 
 // normLang normalizes a language code: lowercases and strips any region/script
