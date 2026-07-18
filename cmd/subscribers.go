@@ -895,10 +895,13 @@ func makeOptinNotifyHook(unsubHeader bool, u *UrlConfig, q *models.Queries, i *i
 			hdr.Set("List-Unsubscribe", `<`+unsubURL+`>`)
 		}
 
-		// ZACA: resolve the subscriber's language (attribs.lang) and render both
-		// the subject and the e-mail template in that language, falling back to
-		// the instance default for empty/unknown languages.
+		// ZACA: resolve the subscriber's language (attribs.lang override, else the
+		// opt-in list's lang:xx tag, else the instance default) and render both the
+		// subject and the e-mail template in that language.
 		lang := subLang(sub)
+		if lang == "" {
+			lang = listsLang(lists)
+		}
 		li, tpls := zi.For(lang), zi.NotifTpls(lang)
 
 		// Send the e-mail.

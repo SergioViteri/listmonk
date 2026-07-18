@@ -215,14 +215,25 @@ func (a *App) SubscriptionPage(c echo.Context) error {
 			makeMsgTpl(a.i18n.T("public.errorTitle"), "", a.i18n.Ts("public.errorProcessingRequest")))
 	}
 
-	// ZACA: render this subscriber-facing page in the subscriber's language.
-	c.Set(zacaI18nKey, a.zi.For(subLang(s)))
+	// ZACA: load the subscriber's lists (also used for the manage UI below) and
+	// resolve the language — attribs.lang overrides, else the list's lang:xx tag,
+	// else app.lang — rendering this subscriber-facing page in that language.
+	subs, err := a.core.GetSubscriptions(0, subUUID, false)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.errorFetchingLists"))
+	}
+	lang := subLang(s)
+	if lang == "" {
+		lang = subsLang(subs)
+	}
+	li := a.zi.For(lang)
+	c.Set(zacaI18nKey, li)
 
 	// Prepare the public template.
 	out := unsubTpl{
 		Subscriber:       s,
 		SubUUID:          subUUID,
-		publicTpl:        publicTpl{Title: a.i18n.T("public.unsubscribeTitle")},
+		publicTpl:        publicTpl{Title: li.T("public.unsubscribeTitle")},
 		AllowBlocklist:   a.cfg.Privacy.AllowBlocklist,
 		AllowExport:      a.cfg.Privacy.AllowExport,
 		AllowWipe:        a.cfg.Privacy.AllowWipe,
@@ -231,19 +242,14 @@ func (a *App) SubscriptionPage(c echo.Context) error {
 
 	// If the subscriber is blocklisted, throw an error.
 	if s.Status == models.SubscriberStatusBlockListed {
-		return c.Render(http.StatusOK, tplMessage, makeMsgTpl(a.i18n.T("public.noSubTitle"), "", a.i18n.Ts("public.blocklisted")))
+		return c.Render(http.StatusOK, tplMessage, makeMsgTpl(li.T("public.noSubTitle"), "", li.Ts("public.blocklisted")))
 	}
 
 	// Only show preference management if it's enabled in settings.
 	if a.cfg.Privacy.AllowPreferences {
 		out.ShowManage = showManage
 
-		// Get the subscriber's lists from the DB to render in the template.
-		subs, err := a.core.GetSubscriptions(0, subUUID, false)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, a.i18n.T("public.errorFetchingLists"))
-		}
-
+		// Render the subscriber's lists (loaded above) in the template.
 		out.Subscriptions = make([]models.Subscription, 0, len(subs))
 		for _, s := range subs {
 			// Private lists shouldn't be rendered in the template.
@@ -280,6 +286,11 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 		subUUID   = c.Param("subUUID")
 		blocklist = a.cfg.Privacy.AllowBlocklist && req.Blocklist
 	)
+
+	// ZACA: resolve the subscriber's language (attribs.lang -> list lang:xx tag ->
+	// app.lang) so the confirmation/manage pages render in it.
+	c.Set(zacaI18nKey, a.zi.For(a.subUUIDLang(subUUID)))
+
 	if !req.Manage || blocklist {
 		if err := a.core.UnsubscribeByCampaign(subUUID, campUUID, blocklist); err != nil {
 			return c.Render(http.StatusInternalServerError, tplMessage,
@@ -311,9 +322,6 @@ func (a *App) SubscriptionPrefs(c echo.Context) error {
 				"name", a.i18n.T("globals.terms.subscriber"))))
 	}
 	sub.Name = req.Name
-
-	// ZACA: render the manage-preferences confirmation in the subscriber's language.
-	c.Set(zacaI18nKey, a.zi.For(subLang(sub)))
 
 	// Update the subscriber properties in the DB.
 	if _, err := a.core.UpdateSubscriber(sub.ID, sub); err != nil {

@@ -16,9 +16,23 @@ cambios de esquema ni migraciones de BD.**
 listmonk es mono-idioma por instancia: un único `*i18n.I18n` global (construido al
 arranque con `app.lang`) sirve admin + páginas públicas + emails de sistema.
 Aquí hacemos que **las piezas de cara al suscriptor** salgan en el idioma del
-suscriptor, leído de `subscriber.attribs.lang` (campo JSON libre, sin migración).
-El **admin sigue mono-idioma** (idioma del equipo). El SETEO de `attribs.lang` lo
-hacen los encargos hermanos (conector Odoo, migración del pie); aquí solo se lee.
+suscriptor. El **admin sigue mono-idioma** (idioma del equipo).
+
+### Cómo se resuelve el idioma (cadena)
+
+`attribs.lang` (override explícito, si está) → **tag `lang:xx` de la lista** del
+contexto → `app.lang`.
+
+- **Fuente principal: la lista.** Basta **etiquetar cada lista con `lang:es` /
+  `lang:fr`** (panel → lista → Tags). El modelo de Zacatrus ya está segmentado
+  ES/FR y todo lo de cara al suscriptor tiene contexto de lista, así que **no hace
+  falta escribir nada por suscriptor**.
+- **Override opcional:** si alguien (p.ej. el conector Odoo) setea
+  `subscriber.attribs.lang` (campo JSON libre, sin migración), ese valor gana.
+
+Por página: gestión/baja → tag de las listas del suscriptor; opt-in (página y
+email) → tag de las listas del `?l=`/del alta; formulario → `app.lang` (sin
+contexto de suscriptor). `normLang` normaliza (`es-ES`→`es`).
 
 **Alcance:** página pública de gestión/baja (`subscription.html`), opt-in
 (`optin.html`), formulario público (`subscription-form.html`) y el **email de
@@ -30,8 +44,10 @@ siguen en `app.lang`).
   - `i18nStore`: caché lazy de `*i18n.I18n` por idioma (reutiliza el
     `getI18nLang` de upstream: base inglés + overlay del idioma) y de sets de
     plantillas de email por idioma. Idioma vacío/desconocido → default (`app.lang`).
-  - `subLang(sub)` lee `attribs.lang`; `listsLang(lists)` deriva de un tag
-    `lang:xx` (fallback donde no hay suscriptor); `normLang` normaliza (`es-ES`→`es`).
+  - Resolución de idioma: `subLang(sub)` lee el override `attribs.lang`;
+    `listTagLang`/`listsLang`/`subsLang` derivan del tag `lang:xx` de la(s)
+    lista(s); `subUUIDLang(subUUID)` aplica la cadena completa cargando
+    suscriptor+listas; `normLang` normaliza (`es-ES`→`es`).
   - Constante `zacaI18nKey` (clave de `echo.Context`).
 
 ### Hunks mínimos en upstream
@@ -40,8 +56,10 @@ siguen en `app.lang`).
   `makeOptinNotifyHook(...)`; (d) asignar `zi` en el `App{...}`.
 - **`cmd/public.go`** — (a) `tplRenderer.Render`: si el handler dejó una instancia
   por-petición en `c.Get(zacaI18nKey)`, usarla para el campo `.L`; si no, el global
-  (comportamiento original intacto). (b) En `SubscriptionPage`, `SubscriptionPrefs`
-  y `OptinPage`: una línea `c.Set(zacaI18nKey, a.zi.For(...))` tras resolver el idioma.
+  (comportamiento original intacto). (b) En `SubscriptionPage` (resuelve con las
+  suscripciones ya cargadas y localiza también el título/mensajes),
+  `SubscriptionPrefs` (`a.subUUIDLang`) y `OptinPage` (`listsLang`): `c.Set(zacaI18nKey,
+  a.zi.For(...))` tras resolver el idioma.
 - **`cmd/subscribers.go`** — `makeOptinNotifyHook`: nuevo parámetro `zi *i18nStore`;
   resuelve el idioma del suscriptor y renderiza asunto + plantilla del email en ese
   idioma vía `notifs.NotifyWithTpls`.

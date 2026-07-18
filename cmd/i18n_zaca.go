@@ -145,18 +145,55 @@ func subLang(sub models.Subscriber) string {
 	return ""
 }
 
-// listsLang derives a language from a set of lists via a `lang:xx` tag. Used as a
-// fallback where no subscriber record is available (e.g. the opt-in page). It
-// returns the first matching tag found, or "".
-func listsLang(lists []models.List) string {
-	for _, l := range lists {
-		for _, t := range l.Tags {
-			if s, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(t)), "lang:"); ok {
-				if s = normLang(s); s != "" {
-					return s
-				}
+// listTagLang returns the language from a list's `lang:xx` tag, or "".
+func listTagLang(l models.List) string {
+	for _, t := range l.Tags {
+		if s, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(t)), "lang:"); ok {
+			if s = normLang(s); s != "" {
+				return s
 			}
 		}
 	}
 	return ""
+}
+
+// listsLang returns the first `lang:xx` tag across the given lists, or "". Used
+// where there's no subscriber record (e.g. the opt-in page, the opt-in e-mail).
+func listsLang(lists []models.List) string {
+	for _, l := range lists {
+		if s := listTagLang(l); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// subsLang returns the first `lang:xx` tag across the subscriber's subscriptions
+// (models.Subscription embeds List), or "".
+func subsLang(subs []models.Subscription) string {
+	for _, s := range subs {
+		if l := listTagLang(s.List); l != "" {
+			return l
+		}
+	}
+	return ""
+}
+
+// subUUIDLang resolves the display language for a subscriber UUID following the
+// chain: attribs.lang (explicit override) -> the subscriber's list `lang:xx` tag
+// -> "" (the caller's i18nFor then falls back to the instance default). Used by
+// handlers that don't already have the subscriber/lists loaded.
+func (a *App) subUUIDLang(subUUID string) string {
+	s, err := a.core.GetSubscriber(0, subUUID, "")
+	if err != nil {
+		return ""
+	}
+	if l := subLang(s); l != "" {
+		return l
+	}
+	subs, err := a.core.GetSubscriptions(0, subUUID, false)
+	if err != nil {
+		return ""
+	}
+	return subsLang(subs)
 }
