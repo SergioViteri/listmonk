@@ -87,6 +87,14 @@ también dentro de bloques `{{ range }}` (donde el punto se rebindea).
   (`archiveTitle` del RSS y `poweredBy` del pie) a `$.L.T`, para que el pie de la
   página del suscriptor quede en su idioma. archive/home no setean idioma → `app.lang`.
 
+**Overrides de textos (estilo Zacatrus, tuteo — nunca "usted"/"vous").** Los JSON de
+upstream (`i18n/es.json`, `i18n/fr.json`) usan trato formal. En vez de editarlos
+(conflictos en merges), se aplica un **overlay parcial** propio por idioma:
+`cmd/i18n-zaca/es.json` y `cmd/i18n-zaca/fr.json` (solo las claves a corregir),
+embebidos con `go:embed` y cargados con `i18n.Load` sobre la instancia de cada
+idioma en `i18nStore.For(lang)`. ES en tuteo; FR en tutoiement (decidido con Sergio).
+Para añadir/ajustar un texto: editar esos JSON (upstream intacto).
+
 Las plantillas de email (`static/email-templates/*.html`) **no se tocan**: el set se
 parsea por idioma con el funcmap `L` ya ligado al idioma correcto, así que `{{ L.Ts }}`
 resuelve solo (header/footer del email incluidos).

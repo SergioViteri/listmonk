@@ -18,6 +18,7 @@ package main
 // See ZACA-CHANGES.md for the full list of touched files.
 
 import (
+	"embed"
 	"html/template"
 	"strings"
 	"sync"
@@ -32,6 +33,15 @@ import (
 // zacaI18nKey is the echo.Context key under which subscriber-facing handlers
 // stash the resolved per-request *i18n.I18n for tplRenderer.Render to pick up.
 const zacaI18nKey = "zaca_i18n"
+
+// zacaOverridesFS holds partial i18n override maps (i18n-zaca/<lang>.json) that
+// rewrite subscriber-facing strings in Zacatrus' voice (tuteo, never "usted").
+// They're overlaid on top of upstream's language file per language, so upstream
+// i18n/*.json stay untouched (mergeable). i18n.Load only overwrites the keys
+// present in the override.
+//
+//go:embed i18n-zaca/*.json
+var zacaOverridesFS embed.FS
 
 // i18nStore lazily builds and caches per-language i18n instances and per-language
 // notification e-mail template sets. Unknown/empty languages fall back to the
@@ -82,6 +92,9 @@ func (s *i18nStore) For(lang string) *i18n.I18n {
 		// default (app.lang) over surprising the subscriber with English.
 		_ = ok
 		i = s.def
+	} else if b, e := zacaOverridesFS.ReadFile("i18n-zaca/" + lang + ".json"); e == nil {
+		// ZACA: overlay our tuteo / Zacatrus-style overrides for this language.
+		_ = i.Load(b)
 	}
 
 	s.mu.Lock()
