@@ -46,7 +46,8 @@ func (m *CampaignMessage) render() error {
 	if err := m.Campaign.Tpl.ExecuteTemplate(&out, models.BaseTpl, m); err != nil {
 		return err
 	}
-	m.body = out.Bytes()
+	// ZACA: inject the campaign's preheader, if any. See preheader_zaca.go.
+	m.body = zacaInjectPreheader(out.Bytes(), m.Campaign)
 
 	// Is there an alt body?
 	if m.Campaign.ContentType != models.CampaignContentTypePlain && m.Campaign.AltBody.Valid {

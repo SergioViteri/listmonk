@@ -128,6 +128,86 @@ Rollback = apuntar `image:` al tag anterior. Se reutiliza el stack existente
 
 ---
 
+## 3. Preheader (preview text) por campaña
+
+El preheader es el fragmento que los clientes de correo muestran junto al asunto
+en la bandeja de entrada. Sin él, el cliente coge lo primero que encuentra en el
+`<body>`, que en las plantillas de listmonk suele ser el enlace de "ver en el
+navegador" (`static/email-templates/default.tpl`). Upstream lo rechazó
+(knadh/listmonk#1240, apoyada en #924), así que vive en el fork. Hasta ahora se
+resolvía a mano metiendo un `div` oculto al principio del cuerpo en cada campaña
+(caso real: campaña 7, Tsukimi FR, importada de Brevo).
+
+**Sin migración:** se guarda bajo la clave `preheader` de la columna `attribs`
+(JSONB) de `campaigns`, que ya existía sin usar. El API de creación/actualización
+de campañas ya lee y escribe `attribs` tal cual (`queries/campaigns.sql`,
+`internal/core/campaigns.go`), así que el modelo y el API no necesitaron ningún
+cambio: guardar y leer el preheader por API ya funcionaba antes de este commit,
+sin más que mandar `{"attribs": {"preheader": "..."}}`.
+
+### Fichero NUEVO
+- **`internal/manager/preheader_zaca.go`** — Toda la lógica de inyección:
+  - `zacaCampaignPreheader(c)` lee y recorta `attribs.preheader`.
+  - `zacaInjectPreheader(body, c)` inserta un elemento oculto justo después de
+    `<body ...>` con el texto (escapado con `html.EscapeString`, así que una
+    comilla o un `<` no pueden romper el HTML ni inyectar nada) y un relleno de
+    caracteres invisibles (`&zwnj;&nbsp;` repetido) para que el cliente de correo
+    no arrastre el resto del cuerpo al hueco que deja un preheader corto.
+  - Es no-op si el content type es `plain` (no hay `<body>` que inyectar), si no
+    hay preheader configurado (**campaña sin preheader = comportamiento idéntico
+    al de hoy, nada de divs vacíos**) o si no se encuentra un tag `<body>` en el
+    HTML renderizado.
+- **`internal/manager/preheader_zaca_test.go`** — Cobertura de los casos de
+  arriba más el escapado (`<script>`, comillas simples/dobles, `&`).
+
+### Hunk mínimo en upstream
+- **`internal/manager/message.go`** — En `CampaignMessage.render()`, tras
+  ejecutar la plantilla compilada de la campaña, `m.body` pasa por
+  `zacaInjectPreheader(...)` antes de usarse. Es el único punto de la base de
+  código por el que pasa **todo** render de campaña (envío real vía
+  `manager/pipe.go`, envío de prueba, ambos previews del navegador y el archivo
+  público — todos llaman a `Manager.NewCampaignMessage`), así que un solo hook
+  cubre todos los caminos sin tocar cada handler.
+
+### Decisiones (documentadas, no automáticas)
+- **Campaña que ya trae un preheader a mano en el HTML** (el caso de la 7): el
+  sistema **no intenta detectarlo**. Sniffear HTML arbitrario para adivinar "esto
+  es un preheader manual" es frágil (falsos positivos con cualquier otro bloque
+  oculto al principio del body, falsos negativos si no usa `display:none` inline)
+  y este fork no tiene infraestructura para validarlo contra casos reales. La
+  regla es simple y predecible: si `attribs.preheader` está vacío, no se toca
+  nada (igual que hoy); si se rellena, se inyecta siempre. Al adoptar el campo en
+  una campaña que ya tenía el div manual, hay que quitar el div a mano — si no,
+  quedan los dos.
+- **Tipos de contenido:** aplica a `html`, `richtext`, `markdown` y `visual`
+  (todas acaban siendo un documento HTML con `<body>`). No aplica a `plain`: no
+  hay preheader en texto plano.
+- **Preview y envío de prueba usan el `attribs` ya guardado en BD**, igual que el
+  resto de `attribs` hoy — no hay ningún camino en el código que sobrescriba
+  `attribs` con lo que llega en la petición de preview/test (solo lo hacen
+  `subject`, `body`, `content_type`, etc.). Para ver el preheader en un preview o
+  un envío de prueba hace falta guardar la campaña primero.
+- El texto del preheader **no es una plantilla**: se trata como texto literal
+  (solo escapado, sin expresiones `{{ }}`), a diferencia del asunto o el cuerpo.
+
+### Panel
+- **`frontend/src/views/Campaign.vue`** — Campo de texto "Preheader" junto al
+  asunto, deshabilitado para campañas en texto plano. En `onSubmit`, el valor se
+  pliega dentro de `form.attribs.preheader` (o se borra la clave si se deja
+  vacío), preservando cualquier otra clave que ya hubiera en el `attribs` JSON en
+  bruto (pestaña "Attribs" existente). Ya no hace falta tocar esa pestaña para
+  fijar el preheader, pero sigue funcionando para quien prefiera editar el JSON
+  directamente.
+- **`i18n/en.json`, `i18n/es.json`, `i18n/fr.json`** — Claves nuevas
+  `campaigns.preheader`, `campaigns.preheaderHelp` y
+  `campaigns.preheaderPlainDisabled` (etiqueta y ayuda del campo). Estas son
+  claves *nuevas*, no overrides de las que ya usa upstream, así que se añaden
+  directamente a los JSON de upstream sin pasar por el mecanismo de overlay de la
+  sección 1 (ese mecanismo existe para evitar conflictos al pisar valores que
+  upstream también toca; una clave nueva no tiene ese riesgo).
+
+---
+
 ## Verificación
 
 1. Local (`make run`): suscriptores con `attribs {"lang":"fr"}` / `{"lang":"es"}` →
@@ -137,3 +217,8 @@ Rollback = apuntar `image:` al tag anterior. Se reutiliza el stack existente
 3. Mergeabilidad: `git merge upstream/nightly` (o el siguiente tag) sin conflictos
    relevantes; `git diff v6.2.0..zaca --stat` pequeño y acorde a este documento.
 4. `docker build -f Dockerfile.zaca ...` construye sin error.
+5. Preheader: `go test ./internal/manager/...` cubre la inyección/escapado; sin
+   entorno de staging, no se ha podido verificar en un cliente de correo real cómo
+   se ve el snippet de la bandeja de entrada (Gmail/Outlook/Apple Mail truncan y
+   rellenan de forma distinta) — pendiente de confirmar visualmente tras el
+   despliegue.
