@@ -73,6 +73,14 @@
                     :placeholder="$t('campaigns.subject')" required />
                 </b-field>
 
+                <b-field :label="$t('campaigns.preheader')" label-position="on-border"
+                  :message="form.content.contentType === 'plain'
+                    ? $t('campaigns.preheaderPlainDisabled') : $t('campaigns.preheaderHelp')">
+                  <b-input :maxlength="150" v-model="form.preheader" name="preheader"
+                    :disabled="!canEdit || form.content.contentType === 'plain'"
+                    :placeholder="$t('campaigns.preheader')" />
+                </b-field>
+
                 <b-field :label="$t('campaigns.fromAddress')" label-position="on-border">
                   <b-input :maxlength="200" v-model="form.fromEmail" name="from_email" :disabled="!canEdit"
                     :placeholder="$t('campaigns.fromAddressPlaceholder')" required />
@@ -369,6 +377,7 @@ export default Vue.extend({
         archiveSlug: null,
         name: '',
         subject: '',
+        preheader: '',
         fromEmail: '',
         headersStr: '[]',
         headers: [],
@@ -496,6 +505,15 @@ export default Vue.extend({
           return;
         }
       }
+
+      // ZACA: fold the dedicated preheader field into attribs.preheader,
+      // preserving any other custom keys already in attribs.
+      const preheader = (this.form.preheader || '').trim();
+      if (preheader) {
+        attribs = { ...(attribs || {}), preheader };
+      } else if (attribs) {
+        delete attribs.preheader;
+      }
       this.form.attribs = attribs;
 
       switch (typ) {
@@ -520,6 +538,9 @@ export default Vue.extend({
           headersStr: JSON.stringify(data.headers, null, 4),
           archiveMetaStr: data.archiveMeta ? JSON.stringify(data.archiveMeta, null, 4) : '{}',
           attribsStr: data.attribs ? JSON.stringify(data.attribs, null, 4) : '{}',
+          // ZACA: attribs.preheader surfaced as its own field, see onSubmit.
+          preheader: (data.attribs && typeof data.attribs.preheader === 'string')
+            ? data.attribs.preheader : '',
 
           // The structure that is populated by editor input event.
           content: {
