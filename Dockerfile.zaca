@@ -4,7 +4,7 @@
 # (produced by goreleaser on a CI runner). For our fork we want a single,
 # reproducible `docker build` on any box with Docker (no Go/Node on the host):
 #
-#   docker build -f Dockerfile.zaca \
+#   docker build --pull -f Dockerfile.zaca \
 #     --build-arg LISTMONK_VERSION=v6.2.0-zaca \
 #     -t listmonk-zaca:v6.2.0-zaca .
 #

@@ -118,7 +118,7 @@ resuelve solo (header/footer del email incluidos).
 
 Flujo de deploy (sin registry ni CI):
 ```bash
-docker build -f Dockerfile.zaca --build-arg LISTMONK_VERSION=v6.2.0-zaca \
+docker build --pull -f Dockerfile.zaca --build-arg LISTMONK_VERSION=v6.2.0-zaca \
   -t listmonk-zaca:v6.2.0-zaca .
 docker save listmonk-zaca:v6.2.0-zaca | ssh ubuntu@news 'docker load'
 # en news: /opt/listmonk/docker-compose.yml -> image: listmonk-zaca:v6.2.0-zaca
@@ -138,7 +138,12 @@ Upstream no ha publicado ninguna release estable posterior a `v6.2.0` (solo
   versiones o superiores, este bloque desaparece solo; si no, volver a subirlas.
 - **`Dockerfile.zaca`** — stdlib de Go: la imagen del toolchain pasa de
   `golang:1.26.1` a `golang:1.26.10` (stdlib corregida), y la etapa final hace
-  `apk upgrade` antes de instalar paquetes (libssl3/libcrypto3 y demás).
+  `apk upgrade` antes de instalar paquetes (libssl3/libcrypto3 y demás). Construir
+  siempre con `docker build --pull`: `alpine:latest` y `node:20-bookworm` se
+  cachean en el host y sin `--pull` se reutiliza una base vieja con sus CVE.
+- Verificado (04-nov-2026): `trivy fs go.mod` → 0 CRITICAL/HIGH (antes: 1 CRITICAL +
+  27 HIGH solo en módulos Go); binario compilado con Go 1.26.10 → `trivy rootfs`
+  0 vulnerabilidades (con Go 1.26.8 aún salían 4 HIGH de stdlib, de ahí 1.26.10).
 
 ---
 
