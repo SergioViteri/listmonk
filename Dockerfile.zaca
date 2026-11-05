@@ -4,7 +4,7 @@
 # (produced by goreleaser on a CI runner). For our fork we want a single,
 # reproducible `docker build` on any box with Docker (no Go/Node on the host):
 #
-#   docker build -f Dockerfile.zaca \
+#   docker build --pull -f Dockerfile.zaca \
 #     --build-arg LISTMONK_VERSION=v6.2.0-zaca \
 #     -t listmonk-zaca:v6.2.0-zaca .
 #
@@ -20,7 +20,7 @@
 FROM node:20-bookworm AS build
 
 # Bring in the Go toolchain from the official Go image (self-contained dir).
-COPY --from=golang:1.26.1-bookworm /usr/local/go /usr/local/go
+COPY --from=golang:1.26.10-bookworm /usr/local/go /usr/local/go
 
 ENV GOPATH=/root/go
 ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
@@ -50,7 +50,9 @@ RUN make dist
 # ---- Run stage: identical to the official Dockerfile ----
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates tzdata shadow su-exec
+# `apk upgrade` pulls the security fixes (libssl3/libcrypto3, ...) published after
+# the base image was cut, so the scan of the final image stays clean.
+RUN apk --no-cache upgrade && apk --no-cache add ca-certificates tzdata shadow su-exec
 
 WORKDIR /listmonk
 

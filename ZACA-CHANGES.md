@@ -106,7 +106,8 @@ resuelve solo (header/footer del email incluidos).
 ### Fichero NUEVO
 - **`Dockerfile.zaca`** — Imagen multi-stage que **compila desde fuente** (el
   `Dockerfile` oficial solo copia un binario ya empaquetado). Stage build: `node:20`
-  + Go 1.26.1 → `make dist`. Stage run: idéntico al oficial (alpine + entrypoint).
+  + Go 1.26.10 → `make dist`. Stage run: idéntico al oficial (alpine + entrypoint)
+  más `apk upgrade` previo (ver «Dependencias» más abajo).
   La versión se pasa por `--build-arg LISTMONK_VERSION` (el `.git` está excluido por
   `.dockerignore`).
 - **`Dockerfile.zaca.dockerignore`** — ignore de contexto específico (BuildKit lo
@@ -117,7 +118,7 @@ resuelve solo (header/footer del email incluidos).
 
 Flujo de deploy (sin registry ni CI):
 ```bash
-docker build -f Dockerfile.zaca --build-arg LISTMONK_VERSION=v6.2.0-zaca \
+docker build --pull -f Dockerfile.zaca --build-arg LISTMONK_VERSION=v6.2.0-zaca \
   -t listmonk-zaca:v6.2.0-zaca .
 docker save listmonk-zaca:v6.2.0-zaca | ssh ubuntu@news 'docker load'
 # en news: /opt/listmonk/docker-compose.yml -> image: listmonk-zaca:v6.2.0-zaca
@@ -125,6 +126,24 @@ ssh ubuntu@news 'cd /opt/listmonk && docker compose up -d'
 ```
 Rollback = apuntar `image:` al tag anterior. Se reutiliza el stack existente
 (Postgres oficial + `.env`); sin migraciones propias.
+
+### Dependencias (parche de seguridad, escaneo mensual Amazon DPP)
+Upstream no ha publicado ninguna release estable posterior a `v6.2.0` (solo
+`v7.0.0-beta.1`), así que **no se rebasa**: se suben a mano, sin tocar código Go.
+- **`go.mod` / `go.sum`** — `echo/v4` 4.13.4 → 4.16.3 (CRITICAL), `go-jose/v4`
+  4.1.4 → 4.1.8, `x/crypto` 0.45.0 → 0.58.0, `x/net` 0.47.0 → 0.62.0, `x/image`
+  0.38.0 → 0.47.0, `x/mod` 0.33.0 → 0.42.0, `x/text` 0.35.0 → 0.43.0 (más lo que
+  arrastran: `gommon`, `go-colorable`, `go-isatty`, `x/sys`, `x/time`). La directiva
+  `go` no cambia. Al rebasar sobre una release nueva de upstream, si trae estas
+  versiones o superiores, este bloque desaparece solo; si no, volver a subirlas.
+- **`Dockerfile.zaca`** — stdlib de Go: la imagen del toolchain pasa de
+  `golang:1.26.1` a `golang:1.26.10` (stdlib corregida), y la etapa final hace
+  `apk upgrade` antes de instalar paquetes (libssl3/libcrypto3 y demás). Construir
+  siempre con `docker build --pull`: `alpine:latest` y `node:20-bookworm` se
+  cachean en el host y sin `--pull` se reutiliza una base vieja con sus CVE.
+- Verificado (04-nov-2026): `trivy fs go.mod` → 0 CRITICAL/HIGH (antes: 1 CRITICAL +
+  27 HIGH solo en módulos Go); binario compilado con Go 1.26.10 → `trivy rootfs`
+  0 vulnerabilidades (con Go 1.26.8 aún salían 4 HIGH de stdlib, de ahí 1.26.10).
 
 ---
 
