@@ -227,6 +227,57 @@ sin más que mandar `{"attribs": {"preheader": "..."}}`.
 
 ---
 
+## 4. Ocultar envíos automáticos en la lista de campañas
+
+La bienvenida automática de la Newsletter ES (desde el 11-nov-2026) crea **una
+campaña nueva por cada grupo de altas** (listmonk no reenvía una campaña ni tiene
+envíos automáticos): unas 4 al día, hasta 16 con las bienvenidas 2/4 a 4/4. Esas
+campañas llevan la etiqueta `bienvenida-auto` y saturan la pantalla de campañas.
+Borrarlas rompería el enlace de baja de los correos ya enviados y sus
+estadísticas, así que se **ocultan, no se tocan**.
+
+**Sin migración:** solo lee la columna `tags` de `campaigns`, que ya existe.
+
+- **Panel:** casilla «Ocultar envíos automáticos» junto al buscador de
+  `Campaigns.vue`, **marcada por defecto**. Desmarcada se ve todo, como en upstream.
+  El estado se recuerda en el navegador (`localStorage`, clave
+  `zaca.campaigns.hideAuto`; si no hay `localStorage`, vale el por defecto).
+  Al cambiarla vuelve a la página 1 y se limpia la selección.
+- **API:** parámetro nuevo `exclude_tag` (repetible, como `tag`) en
+  `GET /api/campaigns` y en `DELETE /api/campaigns` (borrado por consulta). **Sin el
+  parámetro el API es idéntico al de upstream.** El filtro va en la consulta SQL y
+  no en la vista, así que `total` y la paginación cuadran, y la búsqueda por nombre
+  sigue funcionando (se combina con `query`, `status` y `tag`).
+- **Borrado masivo:** «seleccionar las N campañas» borra *por consulta*, no por
+  ids; sin cubrirlo, con la casilla marcada se llevaría por delante también las
+  ocultas. Por eso el `DELETE` por consulta respeta el mismo `exclude_tag` (el
+  panel lo manda). El borrado por ids no lo mira: lo que se marca a mano se borra.
+- La etiqueta oculta está fija en `frontend/src/zaca/hideAutoCampaigns.js`
+  (`AUTO_TAG`). Para ocultar otra, se cambia ahí.
+- Ojo con `tags` NULL: hay campañas sin etiquetas (en la copia de prod, 16 de 91).
+  La condición SQL usa `COALESCE(tags, '{}')`; sin él, `NOT (x && NULL)` es NULL y
+  esas campañas desaparecerían del listado.
+
+### Ficheros NUEVOS
+- **`cmd/campaigns_zaca.go`** — `zacaExcludeTagsParam(c)`: lee `?exclude_tag=`.
+- **`internal/core/campaigns_zaca.go`** — `zacaExcludeTags(tags)`: normaliza la
+  lista (sin vacías ni repetidas, nunca nil).
+- **`frontend/src/zaca/hideAutoCampaigns.js`** — mixin de Vue con el estado de la
+  casilla, la persistencia y los parámetros extra de la API.
+
+### Hunks mínimos en upstream
+- **`queries/campaigns.sql`** — `query-campaigns`: una línea más en el `WHERE`
+  (`$9`, al final para no renumerar). `delete-campaigns`: un `AND` más (`$5`).
+- **`internal/core/campaigns.go`** — `QueryCampaigns` y `DeleteCampaigns` reciben
+  `excludeTags` y lo pasan a la consulta (2 firmas + 2 llamadas).
+- **`cmd/campaigns.go`** — `GetCampaigns` y `DeleteCampaigns` pasan
+  `zacaExcludeTagsParam(c)` (2 llamadas, sin variables nuevas).
+- **`frontend/src/views/Campaigns.vue`** — `mixins`, la casilla (`b-checkbox`),
+  `...this.zacaExcludeParams()` en `getCampaigns` y en el borrado por consulta.
+- **`i18n/{en,es,fr}.json`** — clave nueva `campaigns.hideAuto`.
+
+---
+
 ## Verificación
 
 1. Local (`make run`): suscriptores con `attribs {"lang":"fr"}` / `{"lang":"es"}` →
@@ -241,3 +292,9 @@ sin más que mandar `{"attribs": {"preheader": "..."}}`.
    se ve el snippet de la bandeja de entrada (Gmail/Outlook/Apple Mail truncan y
    rellenan de forma distinta) — pendiente de confirmar visualmente tras el
    despliegue.
+6. Ocultar envíos automáticos: copia local del volcado de prod (Postgres 17) con 30
+   campañas `bienvenida-auto` de prueba añadidas. Con la casilla marcada: 92 de 122
+   (las 16 con `tags` NULL siguen), ninguna `bienvenida-auto`, páginas y total
+   cuadran, la búsqueda por nombre funciona; desmarcada: 122. «Seleccionar todas» +
+   borrar con la casilla marcada deja intactas las 30 ocultas. Preheader y páginas
+   públicas ES/FR sin cambios.
