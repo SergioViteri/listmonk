@@ -73,6 +73,7 @@ FROM campaigns c
 WHERE ($1 = 0 OR id = $1)
     AND (CARDINALITY($2::campaign_status[]) = 0 OR status = ANY($2))
     AND (CARDINALITY($3::VARCHAR(100)[]) = 0 OR $3 <@ tags)
+    AND (CARDINALITY($9::VARCHAR(100)[]) = 0 OR NOT ($9 && COALESCE(tags, '{}')))
     AND ($4 = '' OR TO_TSVECTOR(CONCAT(name, ' ', subject)) @@ TO_TSQUERY($4) OR CONCAT(c.name, ' ', c.subject) ILIKE $4)
     -- Get all campaigns or filter by list IDs.
     AND (
@@ -476,7 +477,9 @@ AND (
     $3 OR EXISTS (
         SELECT 1 FROM campaign_lists WHERE campaign_id = c.id AND list_id = ANY($4::INT[])
     )
-);
+)
+-- Zaca: el borrado por consulta respeta las etiquetas ocultas en el listado.
+AND (CARDINALITY($5::VARCHAR(100)[]) = 0 OR CARDINALITY($1::INT[]) > 0 OR NOT ($5 && COALESCE(tags, '{}')));
 
 -- name: register-campaign-view
 WITH view AS (

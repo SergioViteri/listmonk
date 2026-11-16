@@ -23,7 +23,7 @@ const (
 
 // QueryCampaigns retrieves paginated campaigns optionally filtering them by the given arbitrary
 // query expression. It also returns the total number of records in the DB.
-func (c *Core) QueryCampaigns(searchStr string, statuses, tags []string, orderBy, order string, getAll bool, permittedLists []int, offset, limit int) (models.Campaigns, int, error) {
+func (c *Core) QueryCampaigns(searchStr string, statuses, tags []string, orderBy, order string, getAll bool, permittedLists []int, offset, limit int, excludeTags []string) (models.Campaigns, int, error) {
 	queryStr, stmt := makeSearchQuery(searchStr, orderBy, order, c.q.QueryCampaigns, campQuerySortFields)
 
 	if statuses == nil {
@@ -36,7 +36,7 @@ func (c *Core) QueryCampaigns(searchStr string, statuses, tags []string, orderBy
 
 	// Unsafe to ignore scanning fields not present in models.Campaigns.
 	var out models.Campaigns
-	if err := c.db.Select(&out, stmt, 0, pq.StringArray(statuses), pq.StringArray(tags), queryStr, getAll, pq.Array(permittedLists), offset, limit); err != nil {
+	if err := c.db.Select(&out, stmt, 0, pq.StringArray(statuses), pq.StringArray(tags), queryStr, getAll, pq.Array(permittedLists), offset, limit, zacaExcludeTags(excludeTags)); err != nil {
 		c.log.Printf("error fetching campaigns: %v", err)
 		return nil, 0, echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorFetching", "name", "{globals.terms.campaign}", "error", pqErrMsg(err)))
@@ -333,7 +333,7 @@ func (c *Core) DeleteCampaign(id int) error {
 }
 
 // DeleteCampaigns deletes multiple campaigns by IDs or by query.
-func (c *Core) DeleteCampaigns(ids []int, query string, hasAllPerm bool, permittedLists []int) error {
+func (c *Core) DeleteCampaigns(ids []int, query string, excludeTags []string, hasAllPerm bool, permittedLists []int) error {
 	var queryStr string
 
 	if len(ids) > 0 {
@@ -342,7 +342,7 @@ func (c *Core) DeleteCampaigns(ids []int, query string, hasAllPerm bool, permitt
 		queryStr = makeSearchString(query)
 	}
 
-	if _, err := c.q.DeleteCampaigns.Exec(pq.Array(ids), queryStr, hasAllPerm, pq.Array(permittedLists)); err != nil {
+	if _, err := c.q.DeleteCampaigns.Exec(pq.Array(ids), queryStr, hasAllPerm, pq.Array(permittedLists), zacaExcludeTags(excludeTags)); err != nil {
 		c.log.Printf("error deleting campaigns: %v", err)
 		return echo.NewHTTPError(http.StatusInternalServerError,
 			c.i18n.Ts("globals.messages.errorDeleting", "name", "{globals.terms.campaigns}", "error", pqErrMsg(err)))
