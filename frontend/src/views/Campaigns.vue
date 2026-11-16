@@ -36,6 +36,11 @@
               </div>
             </form>
           </div>
+          <div class="column is-6 is-flex is-align-items-center">
+            <b-checkbox :value="hideAuto" @input="onHideAutoChange" data-cy="hide-auto">
+              {{ $t('campaigns.hideAuto') }}
+            </b-checkbox>
+          </div>
         </div>
 
         <div class="actions" v-if="bulk.checked.length > 0">
@@ -282,8 +287,11 @@ import { mapState } from 'vuex';
 import CampaignPreview from '../components/CampaignPreview.vue';
 import CopyText from '../components/CopyText.vue';
 import EmptyPlaceholder from '../components/EmptyPlaceholder.vue';
+import zacaHideAutoCampaigns from '../zaca/hideAutoCampaigns';
 
 export default Vue.extend({
+  mixins: [zacaHideAutoCampaigns],
+
   components: {
     CampaignPreview,
     EmptyPlaceholder,
@@ -375,6 +383,7 @@ export default Vue.extend({
         order_by: this.queryParams.orderBy,
         order: this.queryParams.order,
         no_body: true,
+        ...this.zacaExcludeParams(),
       });
     },
 
@@ -503,6 +512,7 @@ export default Vue.extend({
           // 'All' is selected, delete by query.
           params.query = this.queryParams.query.replace(/[^\p{L}\p{N}\s]/gu, ' ');
           params.all = this.bulk.all;
+          Object.assign(params, this.zacaExcludeParams());
         }
 
         this.$api.deleteCampaigns(params)

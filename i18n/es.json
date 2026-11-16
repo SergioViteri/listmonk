@@ -73,6 +73,7 @@
     "campaigns.preheader": "Preheader",
     "campaigns.preheaderHelp": "Texto de vista previa que se muestra junto al asunto en la bandeja de entrada. Dejarlo vacío mantiene el comportamiento de hoy (el cliente de correo usa lo primero que encuentra en el cuerpo).",
     "campaigns.preheaderPlainDisabled": "No aplica a campañas en texto plano.",
+    "campaigns.hideAuto": "Ocultar envíos automáticos",
     "campaigns.preview": "Vista previa",
     "campaigns.progress": "Progreso",
     "campaigns.queryPlaceholder": "Nombre o asunto",
