@@ -79,7 +79,7 @@ func (a *App) GetCampaigns(c echo.Context) error {
 	)
 
 	// Query and retrieve campaigns from the DB.
-	res, total, err := a.core.QueryCampaigns(query, status, tags, orderBy, order, hasAllPerm, permittedLists, pg.Offset, pg.Limit)
+	res, total, err := a.core.QueryCampaigns(query, status, tags, orderBy, order, hasAllPerm, permittedLists, pg.Offset, pg.Limit, zacaExcludeTagsParam(c))
 	if err != nil {
 		return err
 	}
@@ -475,7 +475,7 @@ func (a *App) DeleteCampaigns(c echo.Context) error {
 	}
 
 	// Delete the campaigns from the DB.
-	if err := a.core.DeleteCampaigns(ids, query, hasAllPerm, permittedLists); err != nil {
+	if err := a.core.DeleteCampaigns(ids, query, zacaExcludeTagsParam(c), hasAllPerm, permittedLists); err != nil {
 		return err
 	}
 

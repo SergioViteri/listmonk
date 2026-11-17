@@ -72,6 +72,7 @@
     "campaigns.preheader": "Preheader",
     "campaigns.preheaderHelp": "Preview text shown next to the subject line in the inbox. Leave empty to keep today's behaviour (the e-mail client picks whatever comes first in the body).",
     "campaigns.preheaderPlainDisabled": "Not applicable to plain text campaigns.",
+    "campaigns.hideAuto": "Hide automatic sends",
     "campaigns.preview": "Preview",
     "campaigns.progress": "Progress",
     "campaigns.queryPlaceholder": "Name or subject",
