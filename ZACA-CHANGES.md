@@ -278,6 +278,29 @@ estadísticas, así que se **ocultan, no se tocan**.
 
 ---
 
+## 5. «[TEST]» en el asunto de los envíos de prueba
+
+Pedido por Marketing (26-nov-2026): una prueba mandada desde el panel («Enviar
+prueba») llegaba con el mismo asunto que la campaña real, y quien la recibía podía
+creer que era el envío de verdad. Ahora el asunto de la prueba lleva `[TEST] `
+delante. Si el asunto ya empieza por `[TEST]`, no se repite.
+
+- Solo afecta a `POST /api/campaigns/:id/test`. El envío real de la campaña no pasa
+  por ese handler, y las vistas previas tampoco. No se guarda nada: el asunto de la
+  campaña en la base no cambia.
+- El asunto se compila después como plantilla, así que un `{{ ... }}` sigue
+  funcionando.
+
+### Hunk mínimo en upstream
+- **`cmd/campaigns.go`** — `TestCampaign`: `camp.Subject = zacaTestSubject(req.Subject)`
+  (una línea).
+
+### En fichero propio
+- **`cmd/campaigns_zaca.go`** — `zacaTestSubject(subject)` y la constante
+  `zacaTestPrefix`.
+
+---
+
 ## Verificación
 
 1. Local (`make run`): suscriptores con `attribs {"lang":"fr"}` / `{"lang":"es"}` →
@@ -298,3 +321,6 @@ estadísticas, así que se **ocultan, no se tocan**.
    cuadran, la búsqueda por nombre funciona; desmarcada: 122. «Seleccionar todas» +
    borrar con la casilla marcada deja intactas las 30 ocultas. Preheader y páginas
    públicas ES/FR sin cambios.
+7. «[TEST]» en las pruebas: la función se prueba aparte (el paquete `main` lee la
+   config en `init()` y no admite tests); tras desplegar, una prueba desde el panel
+   llega con `[TEST] ` delante y la campaña real sale con su asunto.
