@@ -577,7 +577,7 @@ func (a *App) TestCampaign(c echo.Context) error {
 
 	// Override certain values from the DB with incoming values.
 	camp.Name = req.Name
-	camp.Subject = req.Subject
+	camp.Subject = zacaTestSubject(req.Subject)
 	camp.FromEmail = req.FromEmail
 	camp.Body = req.Body
 	camp.AltBody = req.AltBody
